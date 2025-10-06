@@ -52,16 +52,18 @@ RUN echo "root:dev" | chpasswd && \
 RUN umask 0000 && mkdir -p /home/test && \
     chown -R dev:dev /home/test && chmod -R 777 /home/test
 
-# 7️⃣ 登录信息展示脚本（去除时间同步逻辑）
+# 7️⃣ 登录信息展示脚本
 RUN echo '#!/bin/bash\n\
 if command -v figlet &> /dev/null && command -v lolcat &> /dev/null; then\n\
     figlet -f slant "$(hostname)" | lolcat\n\
 fi\n\
 if command -v neofetch &> /dev/null; then\n\
-    neofetch --stdout\n\
+    neofetch --stdout | lolcat\n\
+    # neofetch\n\
 fi\n\
 echo -e "\033[1;34mIP地址：\033[0m $(hostname -I | awk "{print \$1}")"\n\
 echo -e "\033[1;32m当前时间：\033[0m $(date "+%Y-%m-%d %H:%M:%S")"\n\
+echo -e "\033[1;35m当前时区：\033[0m $(cat /etc/timezone 2>/dev/null || date +%Z)"\n\
 ' > /usr/local/bin/show-login-info && chmod +x /usr/local/bin/show-login-info && \
     touch /var/log/ntp-sync.log && chmod 666 /var/log/ntp-sync.log && \
     echo "if [ -t 0 ]; then /usr/local/bin/show-login-info; fi" >> /etc/bash.bashrc && \
@@ -72,11 +74,12 @@ echo -e "\033[1;32m当前时间：\033[0m $(date "+%Y-%m-%d %H:%M:%S")"\n\
 # ============================================================
 
 # 8️⃣ 修复docker-clean，恢复apt补全
-RUN echo "### 调整docker-clean配置，修复apt补全 ###" && \
-    sed -i 's/^Dir::Cache::pkgcache "";//g' /etc/apt/apt.conf.d/docker-clean || true && \
-    sed -i 's/^Dir::Cache::srcpkgcache "";//g' /etc/apt/apt.conf.d/docker-clean || true && \
-    apt update && mkdir -p /var/cache/apt/apt-file && apt-file update && \
-    chmod -R 755 /var/cache/apt/apt-file && rm -rf /var/lib/apt/lists/*
+RUN echo "### 仅注释影响补全的配置项 ###" && \
+    # 注释单行多配置
+    sed -i 's/^Dir::Cache::pkgcache ""; Dir::Cache::srcpkgcache ""/\/\/ &/' /etc/apt/apt.conf.d/docker-clean && \
+    # 兼容单行单独配置
+    sed -i 's/^Dir::Cache::pkgcache "";/\/\/ &/' /etc/apt/apt.conf.d/docker-clean && \
+    sed -i 's/^Dir::Cache::srcpkgcache "";/\/\/ &/' /etc/apt/apt.conf.d/docker-clean
 
 # ============================================================
 # 定时任务与启动逻辑
