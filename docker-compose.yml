@@ -1,0 +1,14 @@
+services:
+  ubuntu_dev:
+    image: ubuntu_dev:22.04
+    container_name: ubuntu_2204
+    hostname: ubuntu_2204
+    network_mode: bridge
+    privileged: true
+    restart: always
+    ports:
+      - "5522:22"  # 映射主机5522端口映射到容器22端口
+    volumes:
+      - /home/test:/home/test  # 挂载主机目录到容器
+    # 如需添加更多端口映射，可在ports下继续添加
+    # 如需添加更多目录挂载，可在volumes下继续添加
