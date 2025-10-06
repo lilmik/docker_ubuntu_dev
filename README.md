@@ -1,9 +1,16 @@
 # docker_ubuntu_dev
 一个适用于linux开发的docker容器
 
-开发的时候需要用到ubuntu镜像,每次从头搭建一个ubuntu镜像非常麻烦,安装了一些开发常用的基本库.
+开发的时候需要用到ubuntu镜像,默认提供的ubuntu镜像为了保持轻量化,里面缺少了很多库和组件,用起来哪哪都不顺:
 
+> - 原始ubuntu镜像未开启ssh,docker中linux开启ssh自启动也和物理机/虚拟机方式有些差异
+> - 原始ubuntu镜像只有root用户,没有设定密码
+> - 原始ubuntu镜像不含bash-completion包,缺少Tab补全功能用起来很麻烦
+> - 原始ubuntu镜像时区和时间信息不对,有时候依赖时间需要排查一些内容的时候,用起来麻烦
+> - 原始ubuntu镜像页缺少vi | vim | nano这些终端文本编辑工具
+> - ......
 
+那就干脆直接通过脚本一次性把这些问题都解决掉算了.
 
 ------
 
