@@ -49,8 +49,8 @@ RUN echo "root:dev" | chpasswd && \
 # ============================================================
 
 # 6️⃣ 创建测试与挂载目录
-RUN umask 0000 && mkdir -p /home/test && \
-    chown -R dev:dev /home/test && chmod -R 777 /home/test
+RUN umask 0000 && mkdir -p /app && \
+    chown -R dev:dev /app && chmod -R 777 /app
 
 # 7️⃣ 登录信息展示脚本
 RUN echo '#!/bin/bash\n\
