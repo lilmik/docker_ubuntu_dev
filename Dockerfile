@@ -1,71 +1,59 @@
-# 使用Ubuntu 22.04基础镜像
+# ============================================================
+# 基础环境阶段：系统初始化、APT源与包安装（优先执行）
+# ============================================================
 FROM ubuntu:22.04
 
-# 禁用交互提示
 ENV DEBIAN_FRONTEND=noninteractive
-# 设置时区环境变量
 ENV TZ=Asia/Shanghai
 
-# 安装基础工具+时间同步依赖
+# 1️⃣ 更新APT并安装基础包（先拉包再做配置，缓存友好）
 RUN apt update && apt install -y \
-    openssh-server \
-    sudo \
-    net-tools \
-    iputils-ping \
-    git \
-    curl \
-    wget \
+    apt-utils apt-file bash-completion \
+    tzdata ntpdate cron \
+    openssh-server sudo \
+    net-tools iputils-ping \
+    git curl wget \
     build-essential \
-    btop \
-    neofetch \
-    bash-completion \
-    nano \
-    vim \
-    figlet \
-    lolcat \
-    screenfetch \
-    tzdata \
-    ntpdate \
-    cron \
     python3 python3-pip python3-venv \
+    nano vim \
+    figlet lolcat neofetch btop screenfetch \
     && rm -rf /var/lib/apt/lists/*
 
-# 配置时区并初始化ntp相关文件
+# 2️⃣ 设置时区并初始化NTP
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
     dpkg-reconfigure -f noninteractive tzdata && \
-    mkdir -p /var/lib/ntp && touch /var/lib/ntp/ntp.drift && \
-    chmod 666 /var/lib/ntp/ntp.drift
+    mkdir -p /var/lib/ntp && touch /var/lib/ntp/ntp.drift && chmod 666 /var/lib/ntp/ntp.drift
 
-# 配置bash-completion自动加载
+# ============================================================
+# Shell 环境优化：补全、显示信息、SSH初始化
+# ============================================================
+
+# 3️⃣ 启用bash自动补全
 RUN echo "source /etc/bash_completion" >> /etc/bash.bashrc
 
-# 准备SSH环境
-RUN ssh-keygen -A && mkdir -p /run/sshd && chmod 0755 /run/sshd
-
-# 配置SSH允许root登录和密码认证
-RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+# 4️⃣ 初始化SSH环境与配置
+RUN ssh-keygen -A && mkdir -p /run/sshd && chmod 0755 /run/sshd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
-# 设置用户密码并创建dev用户（免密sudo）
+# 5️⃣ 创建dev用户 + 免密sudo + 默认密码
 RUN echo "root:dev" | chpasswd && \
     useradd -m -d /home/dev -s /bin/bash dev && \
     echo "dev:dev" | chpasswd && \
     echo "dev ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    chown -R dev:dev /home/dev && \
-    chmod 755 /home/dev
+    chown -R dev:dev /home/dev && chmod 755 /home/dev
 
-# 准备挂载文件夹
-RUN umask 0000 && \
-    mkdir -p /home/test && \
-    chown -R dev:dev /home/test && \
-    chmod -R 777 /home/test
+# ============================================================
+# 运行环境与登录信息
+# ============================================================
 
-# --------------------------
-# 登录时仅显示系统信息（删除所有同步逻辑）
-# --------------------------
+# 6️⃣ 创建测试与挂载目录
+RUN umask 0000 && mkdir -p /home/test && \
+    chown -R dev:dev /home/test && chmod -R 777 /home/test
+
+# 7️⃣ 登录信息展示脚本（去除时间同步逻辑）
 RUN echo '#!/bin/bash\n\
-# 仅显示系统信息，无时间同步操作\n\
 if command -v figlet &> /dev/null && command -v lolcat &> /dev/null; then\n\
     figlet -f slant "$(hostname)" | lolcat\n\
 fi\n\
@@ -74,39 +62,46 @@ if command -v neofetch &> /dev/null; then\n\
 fi\n\
 echo -e "\033[1;34mIP地址：\033[0m $(hostname -I | awk "{print \$1}")"\n\
 echo -e "\033[1;32m当前时间：\033[0m $(date "+%Y-%m-%d %H:%M:%S")"\n\
-' > /usr/local/bin/show-login-info && \
-    chmod +x /usr/local/bin/show-login-info && \
-    touch /var/log/ntp-sync.log && chmod 666 /var/log/ntp-sync.log
-
-# 让bash启动时自动执行
-RUN echo "if [ -t 0 ]; then /usr/local/bin/show-login-info; fi" >> /etc/bash.bashrc && \
+' > /usr/local/bin/show-login-info && chmod +x /usr/local/bin/show-login-info && \
+    touch /var/log/ntp-sync.log && chmod 666 /var/log/ntp-sync.log && \
+    echo "if [ -t 0 ]; then /usr/local/bin/show-login-info; fi" >> /etc/bash.bashrc && \
     rm -f /etc/update-motd.d/10-help-text /etc/update-motd.d/50-motd-news
 
-# --------------------------
-# 每小时定时同步（保持不变）
-# --------------------------
+# ============================================================
+# APT缓存优化 & 自动补全修复
+# ============================================================
+
+# 8️⃣ 修复docker-clean，恢复apt补全
+RUN echo "### 调整docker-clean配置，修复apt补全 ###" && \
+    sed -i 's/^Dir::Cache::pkgcache "";//g' /etc/apt/apt.conf.d/docker-clean || true && \
+    sed -i 's/^Dir::Cache::srcpkgcache "";//g' /etc/apt/apt.conf.d/docker-clean || true && \
+    apt update && mkdir -p /var/cache/apt/apt-file && apt-file update && \
+    chmod -R 755 /var/cache/apt/apt-file && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# 定时任务与启动逻辑
+# ============================================================
+
+# 9️⃣ 每小时同步时间任务
 RUN echo '#!/bin/bash\n\
 { echo "=== 定时任务同步开始: $(date) ==="; \
   sudo ntpdate -v ntp.aliyun.com time1.aliyun.com ntp1.aliyun.com; \
   echo "=== 定时任务同步结束（状态：$?） ==="; } >> /var/log/ntp-sync.log 2>&1\n\
-' > /etc/cron.hourly/ntp-sync && \
-    chmod +x /etc/cron.hourly/ntp-sync
+' > /etc/cron.hourly/ntp-sync && chmod +x /etc/cron.hourly/ntp-sync
 
-# --------------------------
-# 启动脚本（保持不变，容器启动时同步）
-# --------------------------
+# 🔟 容器启动时执行一次同步并启动sshd+cron
 RUN echo "#!/bin/bash\n\
-echo '容器启动时同步时间...' \n\
-{ echo "=== 容器启动时同步开始: $(date) ==="; \
+echo '容器启动时同步时间...'\n\
+{ echo '=== 容器启动时同步开始: $(date) ==='; \
   sudo ntpdate -v ntp.aliyun.com time1.aliyun.com ntp1.aliyun.com; \
-  echo "=== 容器启动时同步结束（状态：$?） ==="; } >> /var/log/ntp-sync.log 2>&1\n\
-\n\
+  echo '=== 容器启动时同步结束（状态：$?） ==='; } >> /var/log/ntp-sync.log 2>&1\n\
 sudo service cron start\n\
 exec /usr/sbin/sshd -D\n\
 " > /start.sh && chmod +x /start.sh
 
-# 暴露SSH端口
-EXPOSE 22
+# ============================================================
+# 容器入口
+# ============================================================
 
-# 容器启动命令
+EXPOSE 22
 CMD ["/start.sh"]
