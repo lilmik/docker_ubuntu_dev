@@ -78,7 +78,7 @@ docker save -o [保存的文件名.tar] [镜像名称:标签]
 
 
 
-## 保存镜像到当前目录，文件名为 my-image.tar
+## 保存镜像到当前目录
 
 ```bash
 docker save -o ubuntu_dev-22.04.tar ubuntu_dev:22.04
