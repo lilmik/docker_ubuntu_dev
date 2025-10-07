@@ -47,7 +47,7 @@ sudo docker run -d \
 --privileged \
 --restart=always \
 -p 5522:22 \
--v /home/test:/home/test \
+-v ./app:/app \
 ubuntu_dev:22.04
 ```
 
