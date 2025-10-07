@@ -25,7 +25,7 @@
 
 我目前这版镜像上传到了docker hub,提前构建了amd64和arm64镜像,可以直接使用.链接地址是:
 
-https://hub.docker.com/r/ignislee/ubuntu2204_dev/tags
+https://hub.docker.com/r/ignislee/ubuntu2204_dev
 
 一键启用命令参考:
 
