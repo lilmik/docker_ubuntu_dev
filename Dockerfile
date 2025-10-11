@@ -42,13 +42,18 @@ RUN ssh-keygen -A && mkdir -p /run/sshd && chmod 0755 /run/sshd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
-# 5.创建 dev 用户（带 sudo 权限）
-RUN useradd -m -d /home/dev -s /bin/bash dev && \
+# 5.创建 dev 用户（带 sudo 权限）,root和dev密码均为 dev
+# RUN useradd -m -d /home/dev -s /bin/bash dev && \
+#     echo "dev:dev" | chpasswd && \
+#     echo "dev ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+#     chown -R dev:dev /home/dev && \
+#     chmod 755 /home/dev && \
+#     echo "用户创建验证: $(grep dev /etc/passwd)"
+RUN echo "root:dev" | chpasswd && \
+    useradd -m -d /home/dev -s /bin/bash dev && \
     echo "dev:dev" | chpasswd && \
     echo "dev ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    chown -R dev:dev /home/dev && \
-    chmod 755 /home/dev && \
-    echo "用户创建验证: $(grep dev /etc/passwd)"
+    chown -R dev:dev /home/dev && chmod 755 /home/dev
 
 # 6.创建独立虚拟环境（完全隔离系统 Python）
 # pip 全局镜像（系统 pip + venv pip 都生效）
