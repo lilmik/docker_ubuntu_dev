@@ -1,16 +1,5 @@
-# docker_ubuntu_dev
-一个适用于linux开发的docker容器,基于ubuntu22.04创建.
-
-开发的时候需要用到ubuntu镜像,默认提供的ubuntu镜像为了保持轻量化,里面缺少了很多库和组件,用起来哪哪都不顺:
-
-> - 原始ubuntu镜像未开启ssh,docker中linux开启ssh自启动也和物理机/虚拟机方式有些差异
-> - 原始ubuntu镜像只有`root`用户,没有设定密码
-> - 原始ubuntu镜像不含`bash-completion`包,缺少`Tab`补全功能用起来很麻烦
-> - 原始ubuntu镜像时区和时间信息不对,有时候依赖时间需要排查一些内容的时候,用起来麻烦
-> - 原始ubuntu镜像页缺少`vi | vim | nano`这些终端文本编辑工具
-> - ......
-
-那就干脆直接通过脚本一次性把这些问题都解决掉算了.
+# frontend_flutter_dev
+一个适用于flutter web和linux软件开发的docker容器,基于ubuntu22.04创建.
 
 ------
 
@@ -25,11 +14,11 @@
 
 我目前这版镜像上传到了docker hub,提前构建了amd64和arm64镜像,可以直接使用.链接地址是:
 
-https://hub.docker.com/r/ignislee/ubuntu2204_dev
+https://hub.docker.com/r/ignislee/frontend_flutter_dev
 
-1.0: ubuntu底包
+1.0: ubuntu底包+flutter环境
 
-2.0: ubuntu底包+打包好的python venv环境
+2.0: ubuntu底包+flutter环境+打包好的python venv环境
 
 
 
@@ -37,19 +26,30 @@ https://hub.docker.com/r/ignislee/ubuntu2204_dev
 
 ```bash
 sudo docker run -d \
---name ubuntu_2204 \
---hostname ubuntu_2204 \
+--name flutter_dev \
+--hostname flutter_dev \
 --privileged \
 --restart=always \
 -p 5522:22 \
 -p 23000:3000 \
 -v ./app:/app \
-ignislee/ubuntu2204_dev:2.0
+ignislee/frontend_flutter_dev:2.0
 ```
 
-使用WSL测试使用效果如下图:
+使用ARM64版镜像测试使用效果如下图:
 
-![image-20251007102232750](./README.assets/image-20251007102232750.png)
+![image-20251012011958723](./README.assets/image-20251012011958723.png)
+
+镜像中打包了一个测试用的python脚本.如果你在/app目录下,可以直接使用命令启动这个服务.
+
+```bash
+# 开启一个python网页服务,端口号可以不指定,默认是3000
+python app.py -- port 3000
+```
+
+这样就能通过`http://宿主机IP:23000`进行访问了.测试页面如下:
+
+![image-20251012012511513](./README.assets/image-20251012012511513.png)
 
 ------
 
