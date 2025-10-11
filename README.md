@@ -20,6 +20,7 @@ https://hub.docker.com/r/ignislee/frontend_flutter_dev
 
 2.0: ubuntu底包+flutter环境+打包好的python venv环境
 
+2.1: ubuntu底包+flutter环境+打包好的python venv环境+修复ssh不能使用root用户登陆问题
 
 
 一键启用命令参考:
