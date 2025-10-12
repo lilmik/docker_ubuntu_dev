@@ -14,8 +14,8 @@ ENV VIRTUAL_ENV="/opt/venv"
 RUN apt update && apt install -y \
     apt-utils apt-file bash-completion tzdata ntpdate chrony cron sudo \
     openssh-server net-tools iputils-ping curl wget chromium-browser \
-    build-essential git clang cmake ninja-build pkg-config unzip xz-utils zip \
-    python3 python3-pip python3-venv python-is-python3 \
+    build-essential git clang cmake ninja-build pkg-config unzip xz-utils zip ccache \
+    python3 python3-pip python3-venv python-is-python3 patchelf \
     libgl1-mesa-glx libglib2.0-0 libopenblas-base libglu1-mesa xvfb libgl1-mesa-dri libgtk-3-dev mesa-utils liblzma-dev \
     figlet lolcat neofetch btop nano vim \
  && rm -rf /var/lib/apt/lists/* \

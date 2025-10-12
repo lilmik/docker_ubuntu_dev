@@ -52,6 +52,30 @@ python app.py -- port 3000
 
 ![image-20251012012511513](./README.assets/image-20251012012511513.png)
 
+使用nuitka编译和打包这个python app,在ubuntu下测试加上--static-libpython=yes是可以打包通过并正常调用的,在alpine下加上--static-libpython=yes的话,打包能通过但是无法正常调用.编译完成后会生成`/app/dist/app.bin`,这个就可以拷贝到运行容器里面去独立运行了.
+
+```bash
+# 编译
+nuitka app.py \
+  --standalone \
+  --onefile \
+  --lto=yes \
+  --static-libpython=yes \
+  --include-package=flask \
+  --include-package=jinja2 \
+  --include-package=fastapi \
+  --include-package=starlette \
+  --include-package=uvicorn \
+  --output-dir=/app/dist \
+  --show-progress
+  
+ # 调用
+ # 开启网页服务,端口号可以不指定,默认是3000
+ /app/dist/app.bin --port 3000
+```
+
+
+
 ------
 
 ## 手动创建常用命令
