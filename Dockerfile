@@ -113,12 +113,11 @@ RUN set -e; \
 # 10.重置基线 PATH（不含 venv；补 /usr/games 以便 lolcat）
 ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games"
 
-# 11.登录/SSH 场景（/etc/profile.d）：交互式 shell 首次自动激活 + 动态(venv)提示
+# 11.登录/SSH 场景（/etc/profile.d）：修复bash语法错误
 RUN cat <<'EOF' > /etc/profile.d/zz-auto-venv.sh
-# ---- auto-activate venv once for interactive shells & dynamic (venv) ----
+# ---- 修复bash语法错误的自动venv配置 ----
 case $- in *i*) ;; *) return ;; esac
 
-# 首次进入本会话自动激活（不改全局 PATH）
 if [ -z "${_AUTO_VENV_DONE:-}" ] && [ -r /opt/venv/bin/activate ]; then
   unset VIRTUAL_ENV_DISABLE_PROMPT
   # shellcheck disable=SC1091
@@ -126,54 +125,91 @@ if [ -z "${_AUTO_VENV_DONE:-}" ] && [ -r /opt/venv/bin/activate ]; then
   export _AUTO_VENV_DONE=1
 fi
 
-# 动态 (venv) 标签：激活时加、退出后移除
-_venv_ps1_update() {
-  local tag_old="${_VENV_PS1_TAG:-}" tag_new=""
-  if [ -n "${VIRTUAL_ENV:-}" ]; then tag_new="($(basename "$VIRTUAL_ENV"))"; fi
-  # 移除旧标签（仅移除我们加过的前缀）
-  if [ -n "$tag_old" ] && [ "${PS1#${tag_old} }" != "$PS1" ]; then
-    PS1="${PS1#${tag_old} }"
-  fi
-  # 添加新标签（如需）
-  if [ -n "$tag_new" ] && [ "${PS1#${tag_new} }" = "$PS1" ]; then
-    PS1="$tag_new $PS1"
-  fi
-  export _VENV_PS1_TAG="$tag_new"
-}
-case "$PROMPT_COMMAND" in
-  *_venv_ps1_update*) ;;
-  *) PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}_venv_ps1_update" ;;
-esac
+if ! command -v _venv_ps1_update &> /dev/null; then
+  _venv_ps1_update() {
+    local tag_new=""
+    if [ -n "${VIRTUAL_ENV:-}" ]; then 
+      tag_new="($(basename "$VIRTUAL_ENV"))"
+    fi
+    
+    # 使用更兼容的语法移除标签
+    if [ -n "${_VENV_PS1_TAG:-}" ] && [ "${PS1#${_VENV_PS1_TAG} }" != "$PS1" ]; then
+      PS1="${PS1#${_VENV_PS1_TAG} }"
+    else
+      # 修复正则表达式语法，使用变量存储模式
+      local venv_pattern='^([^)]+)\) '
+      if [[ "$PS1" =~ $venv_pattern ]]; then
+        PS1="${PS1#*) }"
+      fi
+    fi
+    
+    if [ -n "$tag_new" ] && [ "${PS1#${tag_new} }" = "$PS1" ]; then
+      PS1="$tag_new $PS1"
+    fi
+    
+    export _VENV_PS1_TAG="$tag_new"
+  }
+fi
+
+if [[ ";${PROMPT_COMMAND};" != *";_venv_ps1_update;"* ]]; then
+  PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}_venv_ps1_update"
+fi
 # ---- end ----
 EOF
 
-# 12.非登录交互 bash（docker exec /bin/bash）：注入相同逻辑
+# 12.非登录交互 bash 配置（包括 docker exec bash）
 RUN cat <<'EOF' >> /etc/bash.bashrc
-# ---- auto-activate venv once (interactive non-login bash) & dynamic prompt ----
+# ---- 修复bash语法错误的非登录bash配置 ----
 if [[ $- == *i* ]]; then
-  if [[ -z "${_AUTO_VENV_DONE:-}" ]] && [[ -r /opt/venv/bin/activate ]]; then
-    unset VIRTUAL_ENV_DISABLE_PROMPT
-    # shellcheck disable=SC1091
-    . /opt/venv/bin/activate
-    export _AUTO_VENV_DONE=1
+  if [ -z "${_AUTO_VENV_DONE:-}" ] && [ -d /etc/profile.d ]; then
+    for profile in /etc/profile.d/*.sh; do
+      if [ -r "$profile" ] && [[ "$profile" == *"zz-auto-venv.sh"* ]]; then
+        # shellcheck disable=SC1090
+        . "$profile"
+      fi
+    done
   fi
-  _venv_ps1_update() {
-    local tag_old="${_VENV_PS1_TAG:-}" tag_new=""
-    if [[ -n "${VIRTUAL_ENV:-}" ]]; then tag_new="($(basename "$VIRTUAL_ENV"))"; fi
-    if [[ -n "$tag_old" ]] && [[ "${PS1#${tag_old} }" != "$PS1" ]]; then
-      PS1="${PS1#${tag_old} }"
-    fi
-    if [[ -n "$tag_new" ]] && [[ "${PS1#${tag_new} }" == "$PS1" ]]; then
-      PS1="$tag_new $PS1"
-    fi
-    export _VENV_PS1_TAG="$tag_new"
-  }
-  case "$PROMPT_COMMAND" in
-    *_venv_ps1_update*) ;;
-    *) PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}_venv_ps1_update" ;;
-  esac
+
+  if ! command -v _venv_ps1_update &> /dev/null; then
+    _venv_ps1_update() {
+      local tag_new=""
+      if [[ -n "${VIRTUAL_ENV:-}" ]]; then 
+        tag_new="($(basename "$VIRTUAL_ENV"))"
+      fi
+      
+      # 使用更兼容的语法移除标签
+      if [[ -n "${_VENV_PS1_TAG:-}" ]] && [[ "${PS1#${_VENV_PS1_TAG} }" != "$PS1" ]]; then
+        PS1="${PS1#${_VENV_PS1_TAG} }"
+      else
+        # 修复正则表达式语法，使用变量存储模式
+        local venv_pattern='^([^)]+)\) '
+        if [[ "$PS1" =~ $venv_pattern ]]; then
+          PS1="${PS1#*) }"
+        fi
+      fi
+      
+      if [[ -n "$tag_new" ]] && [[ "${PS1#${tag_new} }" == "$PS1" ]]; then
+        PS1="$tag_new $PS1"
+      fi
+      
+      export _VENV_PS1_TAG="$tag_new"
+    }
+  fi
+
+  if [[ ";${PROMPT_COMMAND};" != *";_venv_ps1_update;"* ]]; then
+    PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}_venv_ps1_update"
+  fi
 fi
 # ---- end ----
+EOF
+
+# 12b.额外处理纯bash交互模式（docker exec -it <container> /bin/bash）
+RUN cat <<'EOF' > /etc/bashrc
+# 确保与bash.bashrc同步
+if [ -f /etc/bash.bashrc ]; then
+  # shellcheck disable=SC1091
+  . /etc/bash.bashrc
+fi
 EOF
 
 # ============================================================
