@@ -1,0 +1,297 @@
+#!/bin/bash
+# -----------------------------------------------------------------------------
+# show-login-info
+# 整理版：保持原有功能与输出逻辑不变；仅做结构化、命名去重、注释梳理与健壮性处理
+# -----------------------------------------------------------------------------
+set -euo pipefail
+
+# ==== 基础 PATH 与小工具 ======================================================
+PATH="$PATH:/usr/games:/usr/local/games"   # 确保能找到 figlet / lolcat
+command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+# 初始统一 UTF-8，避免早期输出（如 figlet）出现方块/乱码
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+
+# ==== 主机名大字 & 欢迎信息 ===================================================
+if command_exists figlet; then
+  figlet -d /usr/share/figlet -f ansi-shadow -w 500 -- "$(hostname)" \
+    | { command_exists lolcat && lolcat || cat; }
+fi
+
+printf "\033[1m%s\033[0m\n" "Welcome! This environment is ready for coding." \
+  | { command_exists lolcat && lolcat || cat; }
+
+cat <<'EOT' | { command_exists lolcat && lolcat || cat; }
+• Python & virtualenv are set up.
+• Flutter/Dart are preinstalled.
+• Your workspace lives in /app.
+Have fun and build something awesome!
+
+EOT
+
+# ==== neofetch：优雅着色（标题横幅 + 标签彩色、值默认色） ===================
+# 说明：此段行为保持原脚本一致——**若系统装了 lolcat，就使用 lolcat（不受 USE_LOLCAT 变量影响）**
+if command_exists neofetch; then
+  BANNER_WIDTH="${BANNER_WIDTH:-80}"
+
+  # 仅供 neofetch 使用：若有 lolcat 则上色，否则原样输出（不受 USE_LOLCAT 控制）
+  nf_emit_line()  { if command_exists lolcat; then printf "%b\n" "$1" | lolcat; else printf "%b\n" "$1"; fi; }
+  nf_emit_piece() { if command_exists lolcat; then printf "%b"    "$1" | lolcat; else printf "%b"    "$1"; fi; }
+
+  # 生成等宽横幅（“==== title ====”，粗体由调用处加）
+  nf_make_banner() {
+    local title="$1"
+    local inner=" ${title} "
+    local len=${#inner}
+    local pad=$(( BANNER_WIDTH - len ))
+    [ $pad -lt 0 ] && pad=0
+    local left=$(( pad / 2 ))
+    local right=$(( pad - left ))
+    printf "%*s%s%*s" "$left" "" "$inner" "$right" "" | tr ' ' '='
+  }
+
+  (
+    set +o pipefail 2>/dev/null || true
+    header_done=0
+    while IFS= read -r line; do
+      # 第一行（无冒号且非空）视为标题行 → 用横幅替换，并跳过下一行分割线
+      if [ $header_done -eq 0 ] && [ -n "$line" ] && [[ "$line" != *:* ]]; then
+        banner="$(nf_make_banner "$line")"
+        nf_emit_line "\033[1m${banner}\033[0m"
+        header_done=1
+        IFS= read -r _discard || true
+        continue
+      fi
+
+      # 常规行：有冒号 → “标签:” 粗体+彩色，后面的值不加色；无冒号 → 整行粗体+彩色
+      if [[ "$line" == *:* ]]; then
+        label="${line%%:*}"
+        value="${line#*:}"
+        nf_emit_piece "\033[1m${label}:\033[0m"
+        printf " %s\n" "${value# }"
+      else
+        nf_emit_line "\033[1m${line}\033[0m"
+      fi
+    done < <(neofetch --stdout)
+  )
+fi
+
+# ==== 通用颜色/样式工具（受 USE_LOLCAT / COLOR_MODE 等控制） ================
+# 说明：以下通用输出受 USE_LOLCAT 控制，与上面的 neofetch 段相互独立（保持原逻辑）
+# 环境变量：USE_LOLCAT=1(默认) 时且安装了 lolcat → 使用 lolcat；否则使用 ANSI 颜色回退
+USE_LOLCAT="${USE_LOLCAT:-1}"
+LOLCAT_OPTS="${LOLCAT_OPTS:-}"
+
+# 是否具备 256 色（用于回退方案）
+supports_256() { tput colors 2>/dev/null | awk '{exit !($1>=256)}'; }
+
+COLOR_MODE="${COLOR_MODE:-auto}"   # auto|256|16（仅在不用 lolcat 时生效）
+RESET="\033[0m"
+BOLD="\033[1m"
+COLOR_IDX=0
+
+# lolcat 可用性判定（通用段）
+use_lolcat=0
+if [ "$USE_LOLCAT" = "1" ] && command_exists lolcat; then
+  use_lolcat=1
+fi
+
+# 回退颜色表（仅当不用 lolcat 时）
+declare -a COLORS
+if { [ "$COLOR_MODE" = "256" ] || { [ "$COLOR_MODE" = "auto" ] && supports_256; }; }; then
+  COLORS=(
+    "\033[38;5;196m" "\033[38;5;202m" "\033[38;5;208m" "\033[38;5;214m"
+    "\033[38;5;220m" "\033[38;5;154m" "\033[38;5;082m" "\033[38;5;046m"
+    "\033[38;5;051m" "\033[38;5;045m" "\033[38;5;039m" "\033[38;5;033m"
+    "\033[38;5;027m" "\033[38;5;129m" "\033[38;5;135m" "\033[38;5;201m"
+  )
+else
+  COLORS=(
+    "\033[31m" "\033[33m" "\033[32m" "\033[36m"
+    "\033[34m" "\033[35m" "\033[91m" "\033[93m"
+    "\033[92m" "\033[96m" "\033[94m" "\033[95m"
+  )
+fi
+
+# 可选：随机打乱一次颜色顺序
+if [ "${SHUFFLE_COLORS:-0}" = "1" ]; then
+  for ((i=${#COLORS[@]}-1; i>0; i--)); do
+    j=$(( RANDOM % (i+1) ))
+    tmp=${COLORS[i]}
+    COLORS[i]=${COLORS[j]}
+    COLORS[j]=$tmp
+  done
+fi
+
+# 运行期 locale 细化：优先 zh_CN.UTF-8，可用则切换
+set_locale_safely() {
+  local has_zhcn=0
+  if command_exists locale; then
+    if locale -a 2>/dev/null | grep -qi '^zh_CN\.utf-8$'; then
+      has_zhcn=1
+    fi
+  fi
+  if [ "$has_zhcn" -eq 1 ]; then
+    export LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 LC_CTYPE=zh_CN.UTF-8 LANGUAGE=zh_CN:zh
+  else
+    export LANG=C.UTF-8 LC_ALL=C.UTF-8 LC_CTYPE=C.UTF-8 LANGUAGE=C
+  fi
+}
+set_locale_safely
+
+# 通用“整行/片段”发射器（受 use_lolcat 控制）
+emit_line_lc()  { if [ $use_lolcat -eq 1 ]; then printf "%b\n" "$1" | lolcat $LOLCAT_OPTS; else printf "%b\n" "$1"; fi; }
+emit_piece_lc() { if [ $use_lolcat -eq 1 ]; then printf "%b"    "$1" | lolcat $LOLCAT_OPTS; else printf "%b"    "$1"; fi; }
+
+# 统一的“标签: 值”打印：标签（含冒号）粗体+彩色；值使用默认色
+lprint() {
+  local label="$1"
+  local value="${2:-}"
+  [ -z "$label" ] && { printf "\n"; return; }
+
+  if [ $use_lolcat -eq 1 ]; then
+    emit_piece_lc "${BOLD}${label}${RESET}"
+    printf " %s\n" "$value"
+  else
+    local color="${COLORS[$COLOR_IDX]}"
+    COLOR_IDX=$(( (COLOR_IDX + 1) % ${#COLORS[@]} ))
+    printf "%b%b%s%b %s\n" "$color" "$BOLD" "$label" "$RESET" "$value"
+  fi
+}
+
+# 彩色横幅（考虑东亚宽度），整体加粗；有 python3 用精准宽度，否则退化
+print_banner() {
+  local title="$1"
+  local total="${2:-80}"
+  local line
+  if command_exists python3; then
+    line="$(python3 - "$title" "$total" <<'PYEOF'
+import sys, unicodedata
+title=sys.argv[1]; total=int(sys.argv[2])
+def w(s): return sum(2 if unicodedata.east_asian_width(c) in ('F','W') else 1 for c in s)
+inner=f' {title} '; rem=max(total - w(inner), 0); left, right = divmod(rem, 2)
+print('='*left + inner + '='*(left+right))
+PYEOF
+)"
+  else
+    line="==================== ${title} ===================="
+  fi
+  if [ $use_lolcat -eq 1 ]; then
+    emit_line_lc "${BOLD}${line}${RESET}"
+  else
+    local color="${COLORS[$COLOR_IDX]}"
+    COLOR_IDX=$(( (COLOR_IDX + 1) % ${#COLORS[@]} ))
+    printf "%b%b%s%b\n" "$color" "$BOLD" "$line" "$RESET"
+  fi
+}
+
+# ==== 信息区块：系统网络与时间 ================================================
+print_banner "系统网络与时间" 80
+
+get_ip() {
+  if command_exists ip; then
+    ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -n1
+  elif command_exists hostname; then
+    hostname -I 2>/dev/null | awk '{print $1}'
+  elif command_exists ifconfig; then
+    ifconfig | grep -oE 'inet (addr:)?([0-9]+\.){3}[0-9]+' | awk '{print $2}' | grep -v '^127\.' | head -n1
+  fi
+}
+IP_ADDR="$(get_ip || true)"
+lprint "IP地址："     "${IP_ADDR:-未知}"
+lprint "当前时间："   "$(date '+%Y-%m-%d %H:%M:%S')"
+TZ_STR="$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo "未知")"
+lprint "当前时区："   "$TZ_STR"
+lprint ""
+
+# ==== 信息区块：Python / 虚拟环境 ============================================
+print_banner "Python 环境信息" 80
+
+if command_exists python3 || command_exists python; then
+  if command_exists python3; then
+    PYV="$(python3 -V 2>&1)"
+    PYBIN="$(command -v python3)"
+  else
+    PYV="$(python -V 2>&1)"
+    PYBIN="$(command -v python)"
+  fi
+
+  if [ -n "${VIRTUAL_ENV:-}" ]; then
+    VENV_STATE="已激活"
+    VENV_PATH="$VIRTUAL_ENV"
+  else
+    VENV_STATE="未激活"
+    VENV_PATH="/opt/venv（未激活）"
+  fi
+
+  lprint "Python版本："   "$PYV"
+  lprint "Python路径："   "$PYBIN"
+  lprint "虚拟环境状态：" "$VENV_STATE"
+  lprint "激活命令："     "source /opt/venv/bin/activate"
+  lprint "取消激活："     "deactivate"
+  lprint "删除虚拟环境：" "rm -rf /opt/venv/"
+  lprint "新建虚拟环境：" "sudo python -m venv /opt/new_venv/ && source /opt/new_venv/bin/activate"
+else
+  lprint "Python环境："   "未安装"
+fi
+lprint ""
+
+# ==== 信息区块：Flutter / Dart ===============================================
+print_banner "Flutter / Dart 信息" 80
+
+FLUTTER_PATHS=(
+  "/opt/flutter/bin/flutter"
+  "$HOME/flutter/bin/flutter"
+  "/usr/local/flutter/bin/flutter"
+)
+export PATH="$PATH:/opt/flutter/bin"
+
+FLUTTER_FOUND=0
+FLUTTER_CMD=""
+
+for p in "${FLUTTER_PATHS[@]}"; do
+  [ -x "$p" ] && FLUTTER_CMD="$p" && FLUTTER_FOUND=1 && break
+done
+if [ $FLUTTER_FOUND -eq 0 ] && command_exists flutter; then
+  FLUTTER_CMD="$(command -v flutter)"
+  FLUTTER_FOUND=1
+fi
+
+if [ $FLUTTER_FOUND -eq 1 ]; then
+  export PATH="$(dirname "$FLUTTER_CMD"):$PATH"
+
+  # Flutter 版本
+  FLUTTER_V="$(flutter --version 2>&1 | sed -n 's/^Flutter \([0-9.]\+\).*/\1/p' | head -n1)"
+  [ -z "$FLUTTER_V" ] && FLUTTER_V="$(flutter --version 2>&1 | awk '/^Flutter /{print $2; exit}')"
+
+  # Dart 路径与版本
+  DART_CMD=""
+  if command_exists dart; then
+    DART_CMD="$(command -v dart)"
+  else
+    _fc="$FLUTTER_CMD"
+    if command_exists readlink; then
+      _resolved="$(readlink -f "$_fc" 2>/dev/null || echo "$_fc")"
+    else
+      _resolved="$_fc"
+    fi
+    FLUTTER_HOME="$(cd "$(dirname "$_resolved")/.." 2>/dev/null && pwd -P)"
+    CANDIDATE_DART="$FLUTTER_HOME/bin/cache/dart-sdk/bin/dart"
+    [ -x "$CANDIDATE_DART" ] && DART_CMD="$CANDIDATE_DART"
+  fi
+
+  if [ -n "${DART_CMD:-}" ]; then
+    DART_V="$("$DART_CMD" --version 2>&1 | sed -n 's/^Dart SDK version: \([0-9.]\+\).*/\1/p' | head -n1)"
+  fi
+  [ -z "${DART_V:-}" ] && DART_V="$(flutter --version 2>&1 | sed -n 's/.*Dart \([0-9.]\+\).*/\1/p' | head -n1)"
+
+  lprint "Flutter版本："  "${FLUTTER_V:-未知}"
+  lprint "Flutter路径："  "$FLUTTER_CMD"
+  lprint "Dart版本："     "${DART_V:-未知}"
+  lprint "Dart路径："     "${DART_CMD:-未发现（由 Flutter 管理）}"
+  lprint "Flutter命令："  "flutter doctor、flutter build 等"
+else
+  lprint "Flutter环境："  "未安装（请确认 /opt/flutter 或 PATH）"
+  lprint "Dart环境："     "通常由 Flutter 内置（未单独安装）"
+fi

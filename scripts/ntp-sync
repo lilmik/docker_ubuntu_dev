@@ -1,0 +1,3 @@
+#!/bin/bash
+bash /usr/local/bin/time-sync set
+date -Is > /run/time-sync.last 2>/dev/null || true

@@ -1,0 +1,31 @@
+#!/bin/bash
+# 统一时间同步工具（默认完全静默，不落盘）
+# 用法： time-sync set | time-sync check
+set -euo pipefail
+
+MODE="${1:-set}"   # set | check
+SERVERS="${NTP_SERVERS:-ntp.aliyun.com time1.aliyun.com ntp1.aliyun.com}"
+LOG_MODE="${NTP_LOG_MODE:-none}"   # none(默认完全静默) | stderr(输出到容器日志)
+
+NTPDATE="/usr/sbin/ntpdate"
+
+# 将 servers 拆成数组，避免 eval
+read -r -a SRV_ARR <<< "$SERVERS"
+
+if ! command -v "$NTPDATE" >/dev/null 2>&1; then
+  [ "$LOG_MODE" = "stderr" ] && echo "[time-sync] ntpdate not found, skip" >&2
+  exit 0
+fi
+
+case "$MODE" in
+  check) args=(-q) ;;          # 仅查询偏差
+  set|*) args=(-u) ;;          # 同步；-u 用非特权端口，更兼容
+esac
+
+if [ "$LOG_MODE" = "stderr" ]; then
+  "$NTPDATE" "${args[@]}" "${SRV_ARR[@]}" || true
+else
+  "$NTPDATE" "${args[@]}" "${SRV_ARR[@]}" >/dev/null 2>&1 || true
+fi
+
+exit 0
