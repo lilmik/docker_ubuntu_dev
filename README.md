@@ -1,16 +1,60 @@
-# docker_ubuntu_dev
-一个适用于linux开发的docker容器
+# frontend_flutter_dev
 
-开发的时候需要用到ubuntu镜像,默认提供的ubuntu镜像为了保持轻量化,里面缺少了很多库和组件,用起来哪哪都不顺:
+一个适用于flutter web和linux软件开发的docker容器,基于ubuntu22.04创建.
 
-> - 原始ubuntu镜像未开启ssh,docker中linux开启ssh自启动也和物理机/虚拟机方式有些差异
-> - 原始ubuntu镜像只有root用户,没有设定密码
-> - 原始ubuntu镜像不含bash-completion包,缺少Tab补全功能用起来很麻烦
-> - 原始ubuntu镜像时区和时间信息不对,有时候依赖时间需要排查一些内容的时候,用起来麻烦
-> - 原始ubuntu镜像页缺少vi | vim | nano这些终端文本编辑工具
-> - ......
+------
 
-那就干脆直接通过脚本一次性把这些问题都解决掉算了.
+## 镜像使用说明
+
+> - 暴露了容器`22`端口,可以在创建容器的时候自行增加宿主机的端口映射.开启了`ssh`服务并自动启动.`dev`或者`root`用户都可以通过`ssh`工具进行登录.
+> - 镜像中创建了一个名为`dev`的管理员用户,`root`用户和`dev`用户的密码都是`dev`.
+> - 加入了bash-completion修正,并且注释了/etc/apt/apt.conf.d/docker-clean中部分影响apt install <tab> <tab>补全功能的内容,会让镜像容量变得稍大,但是后续需要补充安装包的时候更方便
+> - 加入了时区设置到Asia/Shanghai,并且加入了每小时自动同步一次时间的功能
+> - 补充了部分常用工具,如`vi | vim | nano | btop | neofetch`等
+> - 加入了一个ssh登陆后打印`系统信息 | IP地址 | 当前时间 | 当前时区`的功能
+
+我目前这版镜像上传到了docker hub,提前构建了amd64和arm64镜像,可以直接使用.链接地址是:
+
+https://hub.docker.com/r/ignislee/frontend_flutter_dev
+
+1.0: ubuntu底包+flutter环境
+
+2.0: ubuntu底包+flutter环境+打包好的python venv环境
+
+
+
+一键启用命令参考:
+
+```bash
+sudo docker run -d \
+--name flutter_dev \
+--hostname flutter_dev \
+--privileged \
+--restart=always \
+-p 5522:22 \
+-p 23000:3000 \
+-v ./app:/app \
+ignislee/frontend_flutter_dev:2.0
+```
+
+使用WSL测试使用效果如下图:
+
+![d23bb90b04c7a604c5f461512585616](./README.assets/d23bb90b04c7a604c5f461512585616.png)
+
+使用vscode测试如图:
+
+![image-20251013135111518](./README.assets/image-20251013135111518.png)
+
+镜像中打包了一个测试用的python脚本.如果你在/app目录下,可以直接使用命令启动这个服务.
+
+```bash
+# 开启一个python网页服务,端口号可以不指定,默认是3000
+python app.py -- port 3000
+```
+
+这样就能通过`http://宿主机IP:23000`进行访问了.测试页面如下:
+
+![image-20251012012511513](./README.assets/image-20251012012511513.png)
 
 ------
 
@@ -56,6 +100,7 @@ ubuntu_dev:22.04
 ------
 
 ## 基本构建命令，-t指定镜像名称和标签
+
 ```bash
 docker build -t ubuntu_dev:22.04 .
 ```
@@ -63,6 +108,7 @@ docker build -t ubuntu_dev:22.04 .
 
 
 ## 构建成功后查看镜像
+
 ```bash
 docker images | grep ubuntu_dev:22.04
 ```
