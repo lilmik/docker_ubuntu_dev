@@ -34,7 +34,7 @@ sudo docker run -d \
 -p 5522:22 \
 -p 23000:3000 \
 -v ./app:/app \
-ignislee/frontend_flutter_dev:2.0
+ignislee/frontend_flutter_dev:3.0
 ```
 
 使用WSL测试使用效果如下图:
