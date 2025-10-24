@@ -129,6 +129,57 @@ USER root
 RUN git config --global --add safe.directory /opt/flutter
 
 
+
+# ==============================================
+# 3. vcpkg相关配置 - 仅包含vcpkg所需环境变量和架构适配
+# ==============================================
+# icu的安装需要补充下面内容
+RUN apt update && apt install -y \
+    autoconf autoconf-archive automake libtool \
+ && rm -rf /var/lib/apt/lists/*
+
+
+# 克隆vcpkg
+RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg
+
+# 架构识别与triplet设置
+# ENV \
+#     VCPKG_FORCE_SYSTEM_BINARIES=0 \  # <-----会强制指定使用系统cmake，会导致某些版本不兼容的问题。需要格外注意
+#     VCPKG_LIBRARY_LINKAGE=static \
+#     VCPKG_ROOT=/opt/vcpkg
+ENV \
+    VCPKG_LIBRARY_LINKAGE=static \
+    VCPKG_ROOT=/opt/vcpkg  
+
+# 安装vcpkg，给dev账户赋予/opt/vcpkg完整读写权限（核心：解决dev无权限问题）
+RUN \
+    chown -R dev:dev /opt/vcpkg && \
+    chmod -R 755 /opt/vcpkg && \
+    bash /opt/vcpkg/bootstrap-vcpkg.sh
+
+# 为root和dev用户添加vcpkg路径到PATH
+RUN echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /root/.bashrc && \
+    echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /root/.profile && \
+    echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /home/dev/.bashrc && \
+    echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /home/dev/.profile
+
+
+# # # 执行vcpkg安装
+RUN /opt/vcpkg/vcpkg install curl
+
+# 安装icu库,会自动安装i18n，
+RUN /opt/vcpkg/vcpkg install icu
+RUN /opt/vcpkg/vcpkg install sqlite3
+
+RUN /opt/vcpkg/vcpkg install openssl
+RUN /opt/vcpkg/vcpkg install zlib
+
+# 安装crow，会自动安装 asio
+RUN /opt/vcpkg/vcpkg install crow
+
+RUN /opt/vcpkg/vcpkg install grpc
+
+
 # ============================================================
 # 启用bash自动补全、SSH环境配置
 # ============================================================
@@ -205,36 +256,64 @@ RUN echo '#### 登录信息展示：非登录交互式Shell触发 ####' >> /etc/
     echo '  _LOGIN_INFO_SHOWN=1;' >> /etc/bash.bashrc && \
     echo 'fi' >> /etc/bash.bashrc
 
-# === 后续原有配置（时间同步、启动脚本等，不变） ===
-# === 时间同步工具 & 每小时 cron 包装脚本 ===
-COPY scripts/time-sync /usr/local/bin/time-sync
-COPY scripts/ntp-sync /etc/cron.hourly/ntp-sync
+# # # === 后续原有配置（时间同步、启动脚本等，不变） ===
+# # # === 时间同步工具 & 每小时 cron 包装脚本 ===
+# # COPY scripts/time-sync /usr/local/bin/time-sync
+# # COPY scripts/ntp-sync /etc/cron.hourly/ntp-sync
 
 # === 启动脚本（前台起 sshd + cron + 启动时同步一次时间） ===
 COPY scripts/start.sh /usr/local/sbin/start.sh
 ENTRYPOINT ["/bin/bash","/usr/local/sbin/start.sh"]
 
-# === 工作目录 & 登录/非登录自动进入 /app ===
-WORKDIR /app
-COPY scripts/zzz-cd-app.sh /etc/profile.d/zzz-cd-app.sh
-# 非登录交互式 bash 自动 cd /app（修改：使用不同的环境变量名）
-RUN echo 'if [[ $- == *i* ]] && [[ -z "${_CD_APP_DONE:-}" ]] && [[ -d /app ]]; then cd /app; _CD_APP_DONE=1; fi' >> /etc/bash.bashrc
+# # === 工作目录 & 登录/非登录自动进入 /app ===
+# WORKDIR /app
+# COPY scripts/zzz-cd-app.sh /etc/profile.d/zzz-cd-app.sh
+# # 非登录交互式 bash 自动 cd /app（修改：使用不同的环境变量名）
+# RUN echo 'if [[ $- == *i* ]] && [[ -z "${_CD_APP_DONE:-}" ]] && [[ -d /app ]]; then cd /app; _CD_APP_DONE=1; fi' >> /etc/bash.bashrc
 
-# === 统一修正：权限/CRLF/确保 profile.d 会被加载 & 关闭 MOTD ===
+# # === 统一修正：权限/CRLF/确保 profile.d 会被加载 & 关闭 MOTD ===
+# RUN set -eux; \
+# # 去CRLF
+# sed -i 's/\r$//' \
+#   /usr/local/bin/show-login-info \
+#   /etc/profile.d/99-show-login-info.sh \
+# #   /usr/local/bin/time-sync \
+# #   /etc/cron.hourly/ntp-sync \
+#   /usr/local/sbin/start.sh \
+#   /etc/profile.d/zzz-cd-app.sh || true; \
+# \
+# # 仅修改自定义脚本所在目录，不递归/usr
+# chown -R root:root /usr/local/bin /usr/local/sbin /etc/profile.d /etc/cron.hourly; \
+# chmod 0755 /usr/local/bin /usr/local/sbin /etc/profile.d /etc/cron.hourly; \
+# chmod 0755 /usr/local/bin/show-login-info /usr/local/bin/time-sync /usr/local/sbin/start.sh /etc/cron.hourly/ntp-sync; \
+# chmod 0644 /etc/profile.d/*.sh; \
+# \
+# # 后续加载profile.d、关闭MOTD的逻辑
+# grep -q '/etc/profile.d' /etc/profile || \
+#   printf '\n# Load /etc/profile.d/*.sh\nif [ -d /etc/profile.d ]; then\n  for f in /etc/profile.d/*.sh; do [ -r "$f" ] && . "$f"; done\n  unset f\nfi\n' >> /etc/profile; \
+# touch /root/.hushlogin /home/dev/.hushlogin || true; \
+# chown dev:dev /home/dev/.hushlogin 2>/dev/null || true; \
+# rm -f /etc/update-motd.d/10-help-text /etc/update-motd.d/50-motd-news || true; \
+# chmod -x /etc/update-motd.d/* 2>/dev/null || true; \
+# rm -f /run/motd.dynamic 2>/dev/null || true; \
+# : > /etc/motd || true; \
+# sed -i.bak -E 's/^(\s*session\s+optional\s+pam_motd\.so.*)$/# \1/' /etc/pam.d/sshd || true; \
+# sed -i.bak -E 's/^(\s*session\s+optional\s+pam_motd\.so.*)$/# \1/' /etc/pam.d/login || true; \
+# mkdir -p /etc/ssh/sshd_config.d; \
+# printf "PrintMotd no\nPrintLastLog no\n" > /etc/ssh/sshd_config.d/99-no-motd.conf
+
 RUN set -eux; \
 # 去CRLF
 sed -i 's/\r$//' \
   /usr/local/bin/show-login-info \
   /etc/profile.d/99-show-login-info.sh \
-  /usr/local/bin/time-sync \
-  /etc/cron.hourly/ntp-sync \
   /usr/local/sbin/start.sh \
   /etc/profile.d/zzz-cd-app.sh || true; \
 \
 # 仅修改自定义脚本所在目录，不递归/usr
-chown -R root:root /usr/local/bin /usr/local/sbin /etc/profile.d /etc/cron.hourly; \
-chmod 0755 /usr/local/bin /usr/local/sbin /etc/profile.d /etc/cron.hourly; \
-chmod 0755 /usr/local/bin/show-login-info /usr/local/bin/time-sync /usr/local/sbin/start.sh /etc/cron.hourly/ntp-sync; \
+chown -R root:root /usr/local/bin /usr/local/sbin /etc/profile.d; \
+chmod 0755 /usr/local/bin /usr/local/sbin /etc/profile.d; \
+chmod 0755 /usr/local/bin/show-login-info /usr/local/sbin/start.sh; \
 chmod 0644 /etc/profile.d/*.sh; \
 \
 # 后续加载profile.d、关闭MOTD的逻辑
@@ -250,6 +329,22 @@ sed -i.bak -E 's/^(\s*session\s+optional\s+pam_motd\.so.*)$/# \1/' /etc/pam.d/ss
 sed -i.bak -E 's/^(\s*session\s+optional\s+pam_motd\.so.*)$/# \1/' /etc/pam.d/login || true; \
 mkdir -p /etc/ssh/sshd_config.d; \
 printf "PrintMotd no\nPrintLastLog no\n" > /etc/ssh/sshd_config.d/99-no-motd.conf
+
+# 完全去除ssh密码
+RUN ssh-keygen -A && \
+    # 设置root用户空密码
+    sed -i 's/^root:[^:]*:/root::/' /etc/shadow && \
+    # 设置dev用户空密码  
+    sed -i 's/^dev:[^:]*:/dev::/' /etc/shadow && \
+    # 完全重写 sshd_config
+    echo "PermitRootLogin yes" > /etc/ssh/sshd_config && \
+    echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config && \
+    echo "PermitEmptyPasswords yes" >> /etc/ssh/sshd_config && \
+    echo "ChallengeResponseAuthentication no" >> /etc/ssh/sshd_config && \
+    echo "PubkeyAuthentication no" >> /etc/ssh/sshd_config && \
+    echo "UsePAM no" >> /etc/ssh/sshd_config && \
+    mkdir -p /run/sshd /var/empty/sshd && \
+    chmod 0755 /run/sshd
 
 # ============================================================
 # 容器入口
