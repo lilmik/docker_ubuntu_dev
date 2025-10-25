@@ -80,7 +80,22 @@ COPY --chown=dev:dev ./app/*.py /app/
 RUN mkdir -p /opt/app_base && \
     cp -a /app/. /opt/app_base/
 
-# 7.依赖文件校验 + 安装（缺失则中止构建）
+# # 7.依赖文件校验 + 安装（缺失则中止构建）
+# RUN set -e; \
+#     if [ -f "/app/requirements-locked.txt" ]; then \
+#         echo "[deps] 使用 requirements-locked.txt"; \
+#         REQ="/app/requirements-locked.txt"; \
+#     elif [ -f "/app/requirements.txt" ]; then \
+#         echo "[deps] 使用 requirements.txt"; \
+#         REQ="/app/requirements.txt"; \
+#     else \
+#         echo "[ERROR] 未找到依赖文件：/app/requirements(-locked).txt" >&2; \
+#         exit 1; \
+#     fi; \
+#     "$VIRTUAL_ENV/bin/pip" install --no-cache-dir -r "$REQ" && \
+#     echo "[deps] 依赖安装完成，已安装包数量: $($VIRTUAL_ENV/bin/pip list | wc -l)"
+
+# 待验证
 RUN set -e; \
     if [ -f "/app/requirements-locked.txt" ]; then \
         echo "[deps] 使用 requirements-locked.txt"; \
@@ -92,8 +107,31 @@ RUN set -e; \
         echo "[ERROR] 未找到依赖文件：/app/requirements(-locked).txt" >&2; \
         exit 1; \
     fi; \
+    # 安装包
     "$VIRTUAL_ENV/bin/pip" install --no-cache-dir -r "$REQ" && \
-    echo "[deps] 依赖安装完成，已安装包数量: $($VIRTUAL_ENV/bin/pip list | wc -l)"
+    echo "[deps] 依赖安装完成，已安装包数量: $($VIRTUAL_ENV/bin/pip list | wc -l)" && \
+    # 清理pip缓存
+    "$VIRTUAL_ENV/bin/pip" cache purge && \
+    # 清理编译缓存和构建文件
+    find "$VIRTUAL_ENV" -name "*.pyc" -delete && \
+    find "$VIRTUAL_ENV" -name "__pycache__" -type d -delete && \
+    find "$VIRTUAL_ENV" -name "*.so" -exec strip {} \; 2>/dev/null || true && \
+    # 清理setuptools构建目录
+    rm -rf "$VIRTUAL_ENV"/build/ && \
+    # 清理pip构建目录
+    rm -rf /tmp/pip-build-* /tmp/pip-install-* /tmp/pip-req-build-* && \
+    # 清理用户缓存目录
+    rm -rf /root/.cache/pip /home/dev/.cache/pip && \
+    rm -rf /root/.local /home/dev/.local && \
+    # 清理临时目录
+    find /tmp -type f -delete 2>/dev/null || true && \
+    find /var/tmp -type f -delete 2>/dev/null || true && \
+    # 清理日志文件
+    find /var/log -type f -name "*.log" -exec truncate -s 0 {} \; 2>/dev/null || true && \
+    # 清理apt缓存
+    if [ -d "/var/cache/apt" ]; then rm -rf /var/cache/apt/*; fi && \
+    if [ -d "/var/lib/apt/lists" ]; then rm -rf /var/lib/apt/lists/*; fi && \
+    echo "[deps] 依赖安装和缓存清理完成"
 
 
 # ============================================================
@@ -106,6 +144,20 @@ RUN mkdir -p /opt/flutter \
     && chown -R dev:dev /opt/flutter \
     && chmod -R 755 /opt/flutter \
     && chmod +x /opt/flutter/bin/flutter
+
+# <----------测试没用
+# RUN mkdir -p /opt/flutter \
+#     && git clone https://github.com/flutter/flutter.git /opt/flutter -b stable --depth 1 \
+#     && git config --global --add safe.directory /opt/flutter \
+#     && git -C /opt/flutter gc --aggressive --prune=all \
+#     && git -C /opt/flutter reflog expire --expire=now --all \
+#     && git -C /opt/flutter gc --prune=now --aggressive \
+#     && chown -R dev:dev /opt/flutter \
+#     && chmod -R 755 /opt/flutter \
+#     && chmod +x /opt/flutter/bin/flutter \
+#     && echo "Flutter安装完成，Git仓库已优化"
+
+
 
 # 9.写入 bashrc，让 root 和 dev 用户登录时直接可用
 RUN echo "export FLUTTER_HOME=/opt/flutter" >> /root/.bashrc \
@@ -124,6 +176,27 @@ RUN /opt/flutter/bin/flutter --version \
     && /opt/flutter/bin/flutter --disable-analytics \
     && git config --global --add safe.directory /opt/flutter
 
+# # 10.以 dev 用户执行最小化预缓存，避免第一次运行 Flutter 时下载过慢 <----------测试没用
+# USER dev
+# RUN /opt/flutter/bin/flutter --version \
+#     && /opt/flutter/bin/flutter config --enable-linux-desktop \
+#     && /opt/flutter/bin/flutter config --enable-web \
+#     && /opt/flutter/bin/flutter precache --linux --web \
+#     && /opt/flutter/bin/flutter --disable-analytics \
+#     && git config --global --add safe.directory /opt/flutter \
+#     # 清理 Flutter 缓存中的临时文件
+#     && rm -rf /opt/flutter/bin/cache/downloads/*.tmp \
+#     && rm -rf /opt/flutter/bin/cache/artifacts/gradle_wrapper \
+#     && rm -rf /opt/flutter/bin/cache/artifacts/material_fonts \
+#     # 清理用户缓存
+#     && rm -rf /home/dev/.pub-cache/log \
+#     && rm -rf /home/dev/.flutter \
+#     && rm -rf /home/dev/.dart \
+#     && rm -rf /home/dev/.dart_server \
+#     # 清理系统临时文件
+#     && rm -rf /tmp/* /var/tmp/* \
+#     && echo "Flutter预缓存完成并已清理临时文件"
+
 # 11.切回 root 用户，确保 root 也可用 Flutter
 USER root
 RUN git config --global --add safe.directory /opt/flutter
@@ -133,10 +206,11 @@ RUN git config --global --add safe.directory /opt/flutter
 # ==============================================
 # 3. vcpkg相关配置 - 仅包含vcpkg所需环境变量和架构适配
 # ==============================================
-# icu的安装需要补充下面内容
+# # icu的安装需要补充下面内容
 RUN apt update && apt install -y \
     autoconf autoconf-archive automake libtool \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && apt clean
 
 
 # 克隆vcpkg
@@ -163,21 +237,30 @@ RUN echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /root/.bashrc && \
     echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /home/dev/.bashrc && \
     echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /home/dev/.profile
 
+    
 
 # # # 执行vcpkg安装
-RUN /opt/vcpkg/vcpkg install curl
+RUN /opt/vcpkg/vcpkg install curl && \
+    rm -rf /opt/vcpkg/downloads/* && \
+    rm -rf /opt/vcpkg/buildtrees/* && \
+    rm -rf /opt/vcpkg/packages/* && \
+    rm -rf /opt/vcpkg/temp/*
 
 # 安装icu库,会自动安装i18n，
-RUN /opt/vcpkg/vcpkg install icu
-RUN /opt/vcpkg/vcpkg install sqlite3
+RUN /opt/vcpkg/vcpkg install icu && \
+    rm -rf /opt/vcpkg/downloads/* && \
+    rm -rf /opt/vcpkg/buildtrees/* && \
+    rm -rf /opt/vcpkg/packages/* && \
+    rm -rf /opt/vcpkg/temp/*
+# RUN /opt/vcpkg/vcpkg install sqlite3
 
-RUN /opt/vcpkg/vcpkg install openssl
-RUN /opt/vcpkg/vcpkg install zlib
+# RUN /opt/vcpkg/vcpkg install openssl
+# RUN /opt/vcpkg/vcpkg install zlib
 
-# 安装crow，会自动安装 asio
-RUN /opt/vcpkg/vcpkg install crow
+# # 安装crow，会自动安装 asio
+# RUN /opt/vcpkg/vcpkg install crow
 
-RUN /opt/vcpkg/vcpkg install grpc
+# RUN /opt/vcpkg/vcpkg install grpc
 
 
 # ============================================================
