@@ -1,7 +1,7 @@
 # ============================================================
 # 基础环境阶段
 # ============================================================
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
@@ -16,7 +16,10 @@ RUN apt update && apt install -y \
     openssh-server net-tools iputils-ping curl wget chromium-browser \
     build-essential git clang cmake ninja-build pkg-config unzip xz-utils zip ccache \
     python3 python3-pip python3-venv python-is-python3 patchelf \
-    libgl1-mesa-glx libglib2.0-0 libopenblas-base libglu1-mesa xvfb libgl1-mesa-dri libgtk-3-dev mesa-utils liblzma-dev \
+    #ubuntu 22.04 对应如下包名
+    # libgl1-mesa-glx libglib2.0-0 libopenblas-base libglu1-mesa xvfb libgl1-mesa-dri libgtk-3-dev mesa-utils liblzma-dev \
+    # ubutu 24.04 对应如下包名
+    libgl1 libglx-mesa0 libgl1-mesa-dri libglib2.0-0t64 libopenblas0-pthread libglu1-mesa xvfb libgtk-3-dev mesa-utils liblzma-dev \
     figlet lolcat neofetch btop nano vim \
  && rm -rf /var/lib/apt/lists/* \
  && apt clean
@@ -81,21 +84,6 @@ RUN mkdir -p /opt/app_base && \
     cp -a /app/. /opt/app_base/
 
 # # 7.依赖文件校验 + 安装（缺失则中止构建）
-# RUN set -e; \
-#     if [ -f "/app/requirements-locked.txt" ]; then \
-#         echo "[deps] 使用 requirements-locked.txt"; \
-#         REQ="/app/requirements-locked.txt"; \
-#     elif [ -f "/app/requirements.txt" ]; then \
-#         echo "[deps] 使用 requirements.txt"; \
-#         REQ="/app/requirements.txt"; \
-#     else \
-#         echo "[ERROR] 未找到依赖文件：/app/requirements(-locked).txt" >&2; \
-#         exit 1; \
-#     fi; \
-#     "$VIRTUAL_ENV/bin/pip" install --no-cache-dir -r "$REQ" && \
-#     echo "[deps] 依赖安装完成，已安装包数量: $($VIRTUAL_ENV/bin/pip list | wc -l)"
-
-# 待验证
 RUN set -e; \
     if [ -f "/app/requirements-locked.txt" ]; then \
         echo "[deps] 使用 requirements-locked.txt"; \
@@ -107,31 +95,46 @@ RUN set -e; \
         echo "[ERROR] 未找到依赖文件：/app/requirements(-locked).txt" >&2; \
         exit 1; \
     fi; \
-    # 安装包
     "$VIRTUAL_ENV/bin/pip" install --no-cache-dir -r "$REQ" && \
-    echo "[deps] 依赖安装完成，已安装包数量: $($VIRTUAL_ENV/bin/pip list | wc -l)" && \
-    # 清理pip缓存
-    "$VIRTUAL_ENV/bin/pip" cache purge && \
-    # 清理编译缓存和构建文件
-    find "$VIRTUAL_ENV" -name "*.pyc" -delete && \
-    find "$VIRTUAL_ENV" -name "__pycache__" -type d -delete && \
-    find "$VIRTUAL_ENV" -name "*.so" -exec strip {} \; 2>/dev/null || true && \
-    # 清理setuptools构建目录
-    rm -rf "$VIRTUAL_ENV"/build/ && \
-    # 清理pip构建目录
-    rm -rf /tmp/pip-build-* /tmp/pip-install-* /tmp/pip-req-build-* && \
-    # 清理用户缓存目录
-    rm -rf /root/.cache/pip /home/dev/.cache/pip && \
-    rm -rf /root/.local /home/dev/.local && \
-    # 清理临时目录
-    find /tmp -type f -delete 2>/dev/null || true && \
-    find /var/tmp -type f -delete 2>/dev/null || true && \
-    # 清理日志文件
-    find /var/log -type f -name "*.log" -exec truncate -s 0 {} \; 2>/dev/null || true && \
-    # 清理apt缓存
-    if [ -d "/var/cache/apt" ]; then rm -rf /var/cache/apt/*; fi && \
-    if [ -d "/var/lib/apt/lists" ]; then rm -rf /var/lib/apt/lists/*; fi && \
-    echo "[deps] 依赖安装和缓存清理完成"
+    echo "[deps] 依赖安装完成，已安装包数量: $($VIRTUAL_ENV/bin/pip list | wc -l)"
+
+# 待验证
+# RUN set -e; \
+#     if [ -f "/app/requirements-locked.txt" ]; then \
+#         echo "[deps] 使用 requirements-locked.txt"; \
+#         REQ="/app/requirements-locked.txt"; \
+#     elif [ -f "/app/requirements.txt" ]; then \
+#         echo "[deps] 使用 requirements.txt"; \
+#         REQ="/app/requirements.txt"; \
+#     else \
+#         echo "[ERROR] 未找到依赖文件：/app/requirements(-locked).txt" >&2; \
+#         exit 1; \
+#     fi; \
+#     # 安装包
+#     "$VIRTUAL_ENV/bin/pip" install --no-cache-dir -r "$REQ" && \
+#     echo "[deps] 依赖安装完成，已安装包数量: $($VIRTUAL_ENV/bin/pip list | wc -l)" && \
+#     # 清理pip缓存
+#     "$VIRTUAL_ENV/bin/pip" cache purge && \
+#     # 清理编译缓存和构建文件
+#     find "$VIRTUAL_ENV" -name "*.pyc" -delete && \
+#     find "$VIRTUAL_ENV" -name "__pycache__" -type d -delete && \
+#     find "$VIRTUAL_ENV" -name "*.so" -exec strip {} \; 2>/dev/null || true && \
+#     # 清理setuptools构建目录
+#     rm -rf "$VIRTUAL_ENV"/build/ && \
+#     # 清理pip构建目录
+#     rm -rf /tmp/pip-build-* /tmp/pip-install-* /tmp/pip-req-build-* && \
+#     # 清理用户缓存目录
+#     rm -rf /root/.cache/pip /home/dev/.cache/pip && \
+#     rm -rf /root/.local /home/dev/.local && \
+#     # 清理临时目录
+#     find /tmp -type f -delete 2>/dev/null || true && \
+#     find /var/tmp -type f -delete 2>/dev/null || true && \
+#     # 清理日志文件
+#     find /var/log -type f -name "*.log" -exec truncate -s 0 {} \; 2>/dev/null || true && \
+#     # 清理apt缓存
+#     if [ -d "/var/cache/apt" ]; then rm -rf /var/cache/apt/*; fi && \
+#     if [ -d "/var/lib/apt/lists" ]; then rm -rf /var/lib/apt/lists/*; fi && \
+#     echo "[deps] 依赖安装和缓存清理完成"
 
 
 # ============================================================
@@ -208,7 +211,7 @@ RUN git config --global --add safe.directory /opt/flutter
 # ==============================================
 # # icu的安装需要补充下面内容
 RUN apt update && apt install -y \
-    autoconf autoconf-archive automake libtool \
+    autoconf autoconf-archive automake libtool bison gperf nasm \
  && rm -rf /var/lib/apt/lists/* \
  && apt clean
 
@@ -237,30 +240,60 @@ RUN echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /root/.bashrc && \
     echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /home/dev/.bashrc && \
     echo "export PATH=\"${VCPKG_ROOT}:\$PATH\"" >> /home/dev/.profile
 
-    
+# 创建 vcpkg 清理脚本（放在独立路径，不影响 vcpkg 目录）
+RUN echo '#!/bin/sh' > /usr/local/bin/clean_vcpkg && \
+    echo 'rm -rf /opt/vcpkg/downloads/*' >> /usr/local/bin/clean_vcpkg && \
+    echo 'rm -rf /opt/vcpkg/buildtrees/*' >> /usr/local/bin/clean_vcpkg && \
+    echo 'rm -rf /opt/vcpkg/temp/*' >> /usr/local/bin/clean_vcpkg && \
+    chmod +x /usr/local/bin/clean_vcpkg
 
-# # # 执行vcpkg安装
+# # # # 执行vcpkg安装
 RUN /opt/vcpkg/vcpkg install curl && \
-    rm -rf /opt/vcpkg/downloads/* && \
-    rm -rf /opt/vcpkg/buildtrees/* && \
-    rm -rf /opt/vcpkg/packages/* && \
-    rm -rf /opt/vcpkg/temp/*
+    clean_vcpkg
 
-# 安装icu库,会自动安装i18n，
+# # 安装icu库,会自动安装i18n，
 RUN /opt/vcpkg/vcpkg install icu && \
-    rm -rf /opt/vcpkg/downloads/* && \
-    rm -rf /opt/vcpkg/buildtrees/* && \
-    rm -rf /opt/vcpkg/packages/* && \
-    rm -rf /opt/vcpkg/temp/*
-# RUN /opt/vcpkg/vcpkg install sqlite3
+    clean_vcpkg
 
-# RUN /opt/vcpkg/vcpkg install openssl
-# RUN /opt/vcpkg/vcpkg install zlib
+RUN /opt/vcpkg/vcpkg install sqlite3 && \
+    clean_vcpkg
 
-# # 安装crow，会自动安装 asio
-# RUN /opt/vcpkg/vcpkg install crow
+RUN /opt/vcpkg/vcpkg install openssl && \
+    clean_vcpkg
+RUN /opt/vcpkg/vcpkg install zlib && \
+    clean_vcpkg
 
-# RUN /opt/vcpkg/vcpkg install grpc
+# 安装crow，会自动安装 asio
+RUN /opt/vcpkg/vcpkg install crow && \
+    clean_vcpkg
+
+RUN /opt/vcpkg/vcpkg install jsoncpp && \
+    clean_vcpkg
+
+RUN /opt/vcpkg/vcpkg install abseil && \
+    clean_vcpkg
+
+RUN /opt/vcpkg/vcpkg install utf8-range && \
+    clean_vcpkg
+
+
+ENV VCPKG_MAX_CONCURRENCY=2
+RUN /opt/vcpkg/vcpkg install protobuf && \
+    clean_vcpkg
+
+RUN /opt/vcpkg/vcpkg install c-ares && \
+    clean_vcpkg
+
+RUN /opt/vcpkg/vcpkg install re2 && \
+    clean_vcpkg
+# # 安装系统级依赖（根据基础镜像调整，如 CentOS 用 yum）
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     gcc g++ make cmake \
+#     zlib1g-dev libssl-dev \
+#     && rm -rf /var/lib/apt/lists/*
+
+# RUN /opt/vcpkg/vcpkg install grpc && \
+#     clean_vcpkg
 
 
 # ============================================================
@@ -346,7 +379,7 @@ RUN echo '#### 登录信息展示：非登录交互式Shell触发 ####' >> /etc/
 
 # === 启动脚本（前台起 sshd + cron + 启动时同步一次时间） ===
 COPY scripts/start.sh /usr/local/sbin/start.sh
-ENTRYPOINT ["/bin/bash","/usr/local/sbin/start.sh"]
+# ENTRYPOINT ["/bin/bash","/usr/local/sbin/start.sh"]
 
 # # === 工作目录 & 登录/非登录自动进入 /app ===
 # WORKDIR /app
@@ -433,4 +466,4 @@ RUN ssh-keygen -A && \
 # 容器入口
 # ============================================================
 EXPOSE 22 80 433 1000 2000 3000 8000 8080
-CMD ["/start.sh"]
+CMD ["/bin/bash","/usr/local/sbin/start.sh"]

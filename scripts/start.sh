@@ -20,8 +20,8 @@ echo "设置时区为 Asia/Shanghai..."
 ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 echo "Asia/Shanghai" > /etc/timezone
 
-# 启动 cron 服务
-service cron start
+# # 启动 cron 服务
+# service cron start
 
 # 生成 SSH 主机密钥（如果不存在）
 if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
